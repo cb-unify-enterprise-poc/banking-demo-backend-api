@@ -6,9 +6,9 @@ not real security), ownership checks, transfer validation (balance and
 currency checks), orchestrates calls to `data-service`.
 
 Part of a 3-repo demo app:
-- [`banking-demo-frontend`](https://github.com/cb-unify-enterprise-poc/banking-demo-frontend) — presentation
-- [`banking-demo-backend-api`](.) (this repo) — application/business logic
-- [`banking-demo-data-service`](https://github.com/cb-unify-enterprise-poc/banking-demo-data-service) — static/in-memory data tier
+- [`banking-demo-frontend`](https://github.com/cb-unify-enterprise-poc/banking-demo-frontend) — presentation, CloudBees Unify native workflow
+- [`banking-demo-backend-api`](.) (this repo) — application/business logic, Jenkins pipeline
+- [`banking-demo-data-service`](https://github.com/cb-unify-enterprise-poc/banking-demo-data-service) — static/in-memory data tier, CloudBees Unify native workflow
 
 ## Run locally
 
