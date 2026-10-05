@@ -33,6 +33,11 @@ DATA_SERVICE_URL=http://localhost:5000 npm start
    the pushed image as a build artifact against this component, so it can
    be picked up later by Unify release orchestration.
 
+The pipeline runs on a Kubernetes agent pod (CloudBees CI on Kubernetes)
+with two containers: `node` (for `npm install`/`npm test`) and `kaniko`
+(for the image build/push — daemonless, so no privileged container is
+needed on the agent pod).
+
 ### Prerequisites (configured once, outside this repo)
 
 - This Jenkins controller/operations center is integrated with CloudBees
@@ -40,8 +45,19 @@ DATA_SERVICE_URL=http://localhost:5000 npm start
   `junit` results and `registerBuildArtifactMetadata` calls actually surface
   against this component in Unify.
 - JUnit plugin installed on the controller.
-- A Jenkins credential named `dockerhub-credentials` (kind: "Username with
-  password") pointing at your Docker Hub account — **not** stored in this
+- The Kubernetes plugin configured so the controller can provision agent
+  pods (CloudBees CI on Kubernetes has this out of the box).
+- A Kubernetes Secret of type `kubernetes.io/dockerconfigjson`, named
+  `dockerhub-regcred`, in the namespace your Jenkins agents run in:
+  ```bash
+  kubectl create secret docker-registry dockerhub-regcred \
+    --docker-server=https://index.docker.io/v1/ \
+    --docker-username=cloudbeesdemo \
+    --docker-password='<your-docker-hub-password-or-token>' \
+    --namespace=<agent-namespace>
+  ```
+  Kaniko reads registry auth from this mounted `config.json` — **not**
+  from a Jenkins credential, and the password is never stored in this
   repo.
 
 ## Build & push the image manually

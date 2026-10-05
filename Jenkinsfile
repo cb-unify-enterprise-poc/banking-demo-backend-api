@@ -1,7 +1,8 @@
 // Demonstrates CloudBees Unify <-> Jenkins integration:
-//   - Build
+//   - Build (on a Kubernetes agent pod with a Node.js container)
 //   - Simulated test run, published to Unify's Test results tab (junit step)
-//   - Docker image build, pushed to Docker Hub
+//   - Docker image build + push to Docker Hub via Kaniko (daemonless,
+//     no privileged container needed on a Kubernetes agent)
 //   - Build artifact registered in Unify (registerBuildArtifactMetadata)
 //
 // Prerequisites (one-time, done outside this repo):
@@ -10,11 +11,48 @@
 //     `junit` results and `registerBuildArtifactMetadata` calls surface in
 //     Unify against this component.
 //   - JUnit plugin installed on the controller.
-//   - A Jenkins credential named "dockerhub-credentials" (Username with
-//     password) pointing at your Docker Hub account.
+//   - The Kubernetes plugin configured so this controller can provision
+//     agent pods (CloudBees CI on Kubernetes has this out of the box).
+//   - A Kubernetes Secret of type kubernetes.io/dockerconfigjson in the
+//     namespace your Jenkins agents run in, e.g.:
+//       kubectl create secret docker-registry dockerhub-regcred \
+//         --docker-server=https://index.docker.io/v1/ \
+//         --docker-username=cloudbeesdemo \
+//         --docker-password='<your-docker-hub-password-or-token>' \
+//         --namespace=<agent-namespace>
+//     This replaces any Jenkins-credentials-based docker login - Kaniko
+//     reads registry auth from a mounted docker config.json, not from
+//     Jenkins credentials.
 
 pipeline {
-    agent any
+    agent {
+        kubernetes {
+            yaml '''
+apiVersion: v1
+kind: Pod
+spec:
+  containers:
+    - name: node
+      image: node:20-alpine
+      command: ["cat"]
+      tty: true
+    - name: kaniko
+      image: gcr.io/kaniko-project/executor:debug
+      command: ["sleep"]
+      args: ["99d"]
+      volumeMounts:
+        - name: docker-config
+          mountPath: /kaniko/.docker
+  volumes:
+    - name: docker-config
+      secret:
+        secretName: dockerhub-regcred
+        items:
+          - key: .dockerconfigjson
+            path: config.json
+'''
+        }
+    }
 
     environment {
         IMAGE_NAME          = 'banking-demo-backend-api'
@@ -26,34 +64,32 @@ pipeline {
     stages {
         stage('Build') {
             steps {
-                sh 'npm install'
+                container('node') {
+                    sh 'npm install'
+                }
             }
         }
 
         stage('Test') {
             steps {
-                // Simulated for demo purposes - see scripts/generate-test-report.js
-                sh 'npm test'
+                container('node') {
+                    // Simulated for demo purposes - see scripts/generate-test-report.js
+                    sh 'npm test'
+                }
                 junit 'test-reports/*.xml'
             }
         }
 
-        stage('Build image') {
+        stage('Build and push image with Kaniko') {
             steps {
-                sh "docker build -t ${FULL_IMAGE} ."
-            }
-        }
-
-        stage('Push to Docker Hub') {
-            steps {
-                withCredentials([usernamePassword(
-                    credentialsId: 'dockerhub-credentials',
-                    usernameVariable: 'DOCKERHUB_USER',
-                    passwordVariable: 'DOCKERHUB_PASS'
-                )]) {
-                    sh 'echo "$DOCKERHUB_PASS" | docker login -u "$DOCKERHUB_USER" --password-stdin'
-                    sh "docker push ${FULL_IMAGE}"
-                    sh 'docker logout'
+                container('kaniko') {
+                    sh '''
+                        /kaniko/executor \
+                          --context=dir://${WORKSPACE} \
+                          --dockerfile=${WORKSPACE}/Dockerfile \
+                          --destination=docker.io/${FULL_IMAGE} \
+                          --destination=docker.io/${DOCKERHUB_NAMESPACE}/${IMAGE_NAME}:latest
+                    '''
                 }
             }
         }
