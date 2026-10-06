@@ -51,7 +51,7 @@ jobs:
           kubeconfig: ${{ secrets.KUBECONFIG }}
 
       - name: Deploy
-        uses: docker://bitnami/kubectl:1.30
+        uses: docker://alpine/k8s:1.30.14
         shell: sh
         run: |
           kubectl set image deployment/backend-api backend-api=${{ inputs.artifact-url }} -n ${{ vars.namespace }}
