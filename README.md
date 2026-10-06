@@ -60,6 +60,22 @@ needed on the agent pod).
   from a Jenkins credential, and the password is never stored in this
   repo.
 
+## Release orchestration: deploy.yaml
+
+`.cloudbees/workflows/deploy.yaml` is a per-component deploy workflow,
+meant to be called cross-repo by an application's `deployer.yaml` during
+a Unify release (not triggered directly) - this applies even though CI
+for this component runs in Jenkins, since Unify's release/deploy stage
+is what actually ships the artifact Jenkins registered. It accepts
+`artifact-id` and `environment` inputs, rolls the `backend-api`
+Deployment on the target GKE cluster to the latest pushed image, and
+registers the deployment in Unify (`register-deployed-artifact@v2`) for
+traceability.
+
+See the comments at the top of that file for the one-time
+`GCP_SA_KEY`/`GCP_PROJECT`/`GKE_CLUSTER`/`GKE_ZONE` setup it expects in
+the target Unify environment.
+
 ## Build & push the image manually
 
 ```bash

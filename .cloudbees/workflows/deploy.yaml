@@ -1,0 +1,70 @@
+# Per-component deploy workflow, called by the application's deployer.yaml
+# during release orchestration (cross-repo `uses:` reference). Contract:
+# accepts `artifact-id` and `environment` inputs (per CloudBees Unify's
+# deployer workflow pattern), deploys this component, then registers the
+# deployment in Unify for traceability.
+#
+# This is a native Unify workflow even though CI for this component runs
+# in Jenkins - the Jenkinsfile registers the build artifact
+# (registerBuildArtifactMetadata), and Unify's release/deploy stage is
+# what actually ships it, regardless of which CI tool built it.
+#
+# Demo simplification: this always rolls the Deployment to the ":latest"
+# tag rather than resolving `artifact-id` to an exact image digest via the
+# Unify artifact API - there's no confirmed native action for that lookup.
+# A production setup would resolve artifact-id -> immutable digest first.
+#
+# Prerequisites (configured once in Unify, scoped to the target
+# environment - Settings > Environments > Secrets/Variables):
+#   - Secret GCP_SA_KEY: a GCP service account key (JSON) with permission
+#     to get credentials for and update Deployments in the target GKE
+#     cluster (e.g. roles/container.developer). Never commit this key.
+#   - Vars GCP_PROJECT, GKE_CLUSTER, GKE_ZONE: identify the target
+#     cluster. For this demo's "preview" cluster:
+#       GCP_PROJECT=core-flow-research, GKE_CLUSTER=preview, GKE_ZONE=us-east1-b
+
+apiVersion: automation.cloudbees.io/v1alpha1
+kind: workflow
+name: deploy
+
+on:
+  workflow_call:
+    inputs:
+      artifact-id:
+        type: string
+        required: true
+      environment:
+        type: string
+        required: true
+
+permissions:
+  id-token: write
+
+jobs:
+  deploy:
+    environment: ${{ inputs.environment }}
+    steps:
+      - name: Check out
+        uses: cloudbees-io/checkout@v1
+
+      - name: Deploy to GKE
+        uses: docker://google/cloud-sdk:slim
+        shell: sh
+        env:
+          GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
+          GKE_CLUSTER: ${{ vars.GKE_CLUSTER }}
+          GKE_ZONE: ${{ vars.GKE_ZONE }}
+          GCP_PROJECT: ${{ vars.GCP_PROJECT }}
+        run: |
+          gcloud components install kubectl --quiet
+          echo "$GCP_SA_KEY" > /tmp/key.json
+          gcloud auth activate-service-account --key-file=/tmp/key.json
+          gcloud config set project "$GCP_PROJECT"
+          gcloud container clusters get-credentials "$GKE_CLUSTER" --zone "$GKE_ZONE"
+          kubectl set image deployment/backend-api backend-api=docker.io/cloudbeesdemo/banking-demo-backend-api:latest -n banking-demo
+          kubectl rollout status deployment/backend-api -n banking-demo --timeout=120s
+
+      - name: Register deployed artifact
+        uses: cloudbees-io/register-deployed-artifact@v2
+        with:
+          artifact-id: ${{ inputs.artifact-id }}
