@@ -67,14 +67,18 @@ meant to be called cross-repo by an application's `deployer.yaml` during
 a Unify release (not triggered directly) - this applies even though CI
 for this component runs in Jenkins, since Unify's release/deploy stage
 is what actually ships the artifact Jenkins registered. It accepts
-`artifact-id` and `environment` inputs, rolls the `backend-api`
-Deployment on the target GKE cluster to the latest pushed image, and
+`artifact-id`, `artifact-url`, and `environment` inputs, rolls the
+`backend-api` Deployment to the exact artifact version built, and
 registers the deployment in Unify (`register-deployed-artifact@v2`) for
 traceability.
 
-See the comments at the top of that file for the one-time
-`GCP_SA_KEY`/`GCP_PROJECT`/`GKE_CLUSTER`/`GKE_ZONE` setup it expects in
-the target Unify environment.
+Auth is a kubeconfig stored as the Unify secret `KUBECONFIG`
+(`cloudbees-days/setup-kubeconfig`), not a GCP service account - this
+cluster's GCP IAM/Kubernetes RBAC don't allow self-service creation of
+new deploy credentials, so the kubeconfig has to come from someone
+already authorized. See the comments at the top of that file for the
+one-time `KUBECONFIG`/`namespace` setup it expects in the target Unify
+environment.
 
 ## Build & push the image manually
 
